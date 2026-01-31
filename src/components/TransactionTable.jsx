@@ -205,25 +205,30 @@ export default function TransactionTable({ transactions, tokenTransfers = [], ad
             </button>
             
             {showExportMenu && (
-              <div className="absolute right-0 mt-2 w-56 bg-gray-800 border border-gray-700 rounded-lg shadow-xl z-10">
-                {exportFormats.map(format => (
-                  <button
-                    key={format.id}
-                    onClick={() => handleExport(format.id)}
-                    className="w-full text-left px-4 py-3 hover:bg-gray-700 transition first:rounded-t-lg last:rounded-b-lg"
-                  >
-                    <div className="font-semibold">{format.name}</div>
-                    <div className="text-xs text-gray-400">
-                      {format.id === 'koinly' && 'Compatible with Koinly'}
-                      {format.id === 'cointracking' && 'Compatible with CoinTracking'}
-                      {format.id === 'standard' && 'Generic CSV format'}
+                          <div className="absolute right-0 mt-2 w-64 bg-gray-800 border border-gray-700 rounded-lg shadow-xl z-10">
+                            {exportFormats.map(format => (
+                              <button
+                                key={format.id}
+                                onClick={() => handleExport(format.id)}
+                                className="w-full text-left px-4 py-3 hover:bg-gray-700 transition first:rounded-t-lg last:rounded-b-lg"
+                              >
+                                <div className="font-semibold flex items-center">
+                                  {format.name}
+                                  {format.id === 'awakens' && (
+                                    <span className="ml-2 px-2 py-0.5 bg-green-900/30 text-green-400 text-xs rounded">
+                                      Recommended
+                                    </span>
+                                  )}
+                                </div>
+                                <div className="text-xs text-gray-400 mt-1">
+                                  {format.description}
+                                </div>
+                              </button>
+                            ))}
+                          </div>
+                        )}
+                      </div>
                     </div>
-                  </button>
-                ))}
-              </div>
-            )}
-          </div>
-        </div>
 
         {/* Tabs */}
         <div className="flex space-x-2 mb-6">
