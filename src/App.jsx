@@ -6,12 +6,15 @@ import TransactionTable from './components/TransactionTable';
 import Features from './components/Features';
 import LoadingState from './components/LoadingState';
 import Footer from './components/Footer';
-import { fetchTransactions } from './services/api';
-import { Mail } from 'lucide-react';
+import { fetchTransactions, fetchTokenTransfers, fetchTokenBalances, fetchAccountBalance } from './services/api';
+import { Mail, Wallet, Clock, Coins } from 'lucide-react';
 
 function App() {
   const [selectedChain, setSelectedChain] = useState('ethereum');
   const [transactions, setTransactions] = useState([]);
+  const [tokenTransfers, setTokenTransfers] = useState([]);
+  const [tokenBalances, setTokenBalances] = useState([]);
+  const [accountBalance, setAccountBalance] = useState('0');
   const [loading, setLoading] = useState(false);
   const [currentAddress, setCurrentAddress] = useState('');
   const [error, setError] = useState('');
@@ -24,15 +27,29 @@ function App() {
     setError('');
     
     try {
-      const txs = await fetchTransactions(address, selectedChain);
+      // Fetch all data in parallel
+      const [txs, tokens, balances, balance] = await Promise.all([
+        fetchTransactions(address, selectedChain),
+        fetchTokenTransfers(address, selectedChain),
+        fetchTokenBalances(address, selectedChain),
+        fetchAccountBalance(address, selectedChain)
+      ]);
+
       setTransactions(txs);
-      if (txs.length === 0) {
+      setTokenTransfers(tokens);
+      setTokenBalances(balances);
+      setAccountBalance(balance);
+
+      if (txs.length === 0 && tokens.length === 0) {
         setError('No transactions found for this address');
       }
     } catch (error) {
-      console.error('Error fetching transactions:', error);
-      setError(error.message || 'Failed to fetch transactions. Please check your API key in .env file');
+      console.error('Error fetching data:', error);
+      setError(error.message || 'Failed to fetch data. Please check your API key in .env file');
       setTransactions([]);
+      setTokenTransfers([]);
+      setTokenBalances([]);
+      setAccountBalance('0');
     } finally {
       setLoading(false);
     }
@@ -41,20 +58,33 @@ function App() {
   const handleChainChange = async (chainId) => {
     setSelectedChain(chainId);
     
-    // Re-fetch transactions if we already have an address
+    // Re-fetch data if we already have an address
     if (currentAddress) {
       setLoading(true);
       setError('');
       try {
-        const txs = await fetchTransactions(currentAddress, chainId);
+        const [txs, tokens, balances, balance] = await Promise.all([
+          fetchTransactions(currentAddress, chainId),
+          fetchTokenTransfers(currentAddress, chainId),
+          fetchTokenBalances(currentAddress, chainId),
+          fetchAccountBalance(currentAddress, chainId)
+        ]);
+
         setTransactions(txs);
-        if (txs.length === 0) {
+        setTokenTransfers(tokens);
+        setTokenBalances(balances);
+        setAccountBalance(balance);
+
+        if (txs.length === 0 && tokens.length === 0) {
           setError('No transactions found for this address on this chain');
         }
       } catch (error) {
-        console.error('Error fetching transactions:', error);
-        setError(error.message || 'Failed to fetch transactions');
+        console.error('Error fetching data:', error);
+        setError(error.message || 'Failed to fetch data');
         setTransactions([]);
+        setTokenTransfers([]);
+        setTokenBalances([]);
+        setAccountBalance('0');
       } finally {
         setLoading(false);
       }
@@ -64,7 +94,6 @@ function App() {
   const handleNewsletterSubmit = (e) => {
     e.preventDefault();
     if (email && email.includes('@')) {
-      // Here you would integrate with your email service
       console.log('Newsletter signup:', email);
       setSubscribed(true);
       setTimeout(() => {
@@ -73,6 +102,13 @@ function App() {
       }, 3000);
     }
   };
+
+  const getLastTransaction = () => {
+    if (transactions.length === 0) return null;
+    return transactions[0];
+  };
+
+  const lastTx = getLastTransaction();
 
   return (
     <div className="min-h-screen text-white">
@@ -100,6 +136,44 @@ function App() {
         {/* Search */}
         <SearchBar onSearch={handleSearch} loading={loading} />
 
+        {/* Account Summary */}
+        {!loading && currentAddress && (
+          <div className="mb-8 grid md:grid-cols-3 gap-4">
+            <div className="card-hover bg-gradient-to-br from-purple-900/30 to-indigo-900/30 backdrop-blur-lg rounded-2xl p-6 border border-purple-700/50">
+              <div className="flex items-center space-x-3 mb-2">
+                <Wallet className="text-purple-400" size={24} />
+                <h3 className="text-sm font-semibold text-gray-400">BALANCE</h3>
+              </div>
+              <p className="text-3xl font-bold">{accountBalance}</p>
+              <p className="text-sm text-gray-400 mt-1">{transactions[0]?.symbol || 'ETH'}</p>
+            </div>
+
+            <div className="card-hover bg-gradient-to-br from-blue-900/30 to-cyan-900/30 backdrop-blur-lg rounded-2xl p-6 border border-blue-700/50">
+              <div className="flex items-center space-x-3 mb-2">
+                <Clock className="text-blue-400" size={24} />
+                <h3 className="text-sm font-semibold text-gray-400">LAST TRANSACTION</h3>
+              </div>
+              {lastTx ? (
+                <>
+                  <p className="text-xl font-bold">{new Date(lastTx.timestamp * 1000).toLocaleDateString()}</p>
+                  <p className="text-sm text-gray-400 mt-1">{lastTx.value} {lastTx.symbol}</p>
+                </>
+              ) : (
+                <p className="text-xl font-bold">No transactions</p>
+              )}
+            </div>
+
+            <div className="card-hover bg-gradient-to-br from-green-900/30 to-emerald-900/30 backdrop-blur-lg rounded-2xl p-6 border border-green-700/50">
+              <div className="flex items-center space-x-3 mb-2">
+                <Coins className="text-green-400" size={24} />
+                <h3 className="text-sm font-semibold text-gray-400">TOKEN HOLDINGS</h3>
+              </div>
+              <p className="text-3xl font-bold">{tokenBalances.length}</p>
+              <p className="text-sm text-gray-400 mt-1">Different tokens</p>
+            </div>
+          </div>
+        )}
+
         {/* Error Display */}
         {error && !loading && (
           <div className="mb-8 p-6 bg-red-900/30 border border-red-700 rounded-2xl text-red-400">
@@ -115,19 +189,59 @@ function App() {
         {/* Loading State */}
         {loading && <LoadingState />}
 
+        {/* Token Balances Table */}
+        {!loading && tokenBalances.length > 0 && (
+          <div className="mb-8 card-hover bg-gray-900/50 backdrop-blur-lg rounded-2xl p-8 border border-gray-800">
+            <h3 className="text-2xl font-bold mb-6 flex items-center">
+              <Coins className="mr-2" size={24} />
+              Token Holdings
+            </h3>
+            <div className="overflow-x-auto">
+              <table className="w-full">
+                <thead>
+                  <tr className="border-b border-gray-800 text-left">
+                    <th className="py-3 px-4 text-gray-400 font-semibold">Token</th>
+                    <th className="py-3 px-4 text-gray-400 font-semibold">Symbol</th>
+                    <th className="py-3 px-4 text-gray-400 font-semibold">Balance</th>
+                    <th className="py-3 px-4 text-gray-400 font-semibold">Type</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {tokenBalances.slice(0, 10).map((token, idx) => (
+                    <tr key={idx} className="border-b border-gray-800 hover:bg-gray-800/30 transition">
+                      <td className="py-4 px-4 font-semibold">{token.name}</td>
+                      <td className="py-4 px-4 text-purple-400">{token.symbol}</td>
+                      <td className="py-4 px-4">{token.balance}</td>
+                      <td className="py-4 px-4">
+                        <span className="px-3 py-1 bg-blue-900/30 text-blue-400 rounded-full text-sm">
+                          {token.type || 'ERC-20'}
+                        </span>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+            {tokenBalances.length > 10 && (
+              <p className="text-sm text-gray-400 mt-4">Showing 10 of {tokenBalances.length} tokens</p>
+            )}
+          </div>
+        )}
+
         {/* Transactions Table */}
         {!loading && (
           <TransactionTable 
-            transactions={transactions} 
+            transactions={transactions}
+            tokenTransfers={tokenTransfers}
             address={currentAddress}
           />
         )}
 
         {/* Features (show when no transactions) */}
-        {!loading && transactions.length === 0 && !error && <Features />}
+        {!loading && transactions.length === 0 && tokenTransfers.length === 0 && !error && <Features />}
 
         {/* Newsletter Section */}
-        {!loading && transactions.length > 0 && (
+        {!loading && (transactions.length > 0 || tokenTransfers.length > 0) && (
           <div className="mt-16 card-hover bg-gradient-to-r from-purple-900/30 to-indigo-900/30 backdrop-blur-lg rounded-2xl p-8 border border-purple-700/50">
             <div className="max-w-3xl mx-auto text-center">
               <Mail className="mx-auto mb-4 text-purple-400" size={48} />
@@ -169,8 +283,8 @@ function App() {
           </div>
         )}
 
-        {/* Info Section - Always show when transactions are loaded */}
-        {!loading && transactions.length > 0 && (
+        {/* Info Section */}
+        {!loading && (transactions.length > 0 || tokenTransfers.length > 0) && (
           <div className="mt-8 grid md:grid-cols-3 gap-6">
             <div className="bg-gray-900/50 backdrop-blur-lg rounded-2xl p-6 border border-gray-800">
               <h4 className="font-bold mb-2 text-lg">⚡ Fast & Accurate</h4>

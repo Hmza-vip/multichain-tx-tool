@@ -1,5 +1,5 @@
-import { Download, ExternalLink, ChevronDown, TrendingUp } from 'lucide-react';
-import { useState, useEffect, useRef } from 'react';
+import { Download, ExternalLink, ChevronDown, TrendingUp, RefreshCw } from 'lucide-react';
+import { useState } from 'react';
 import { exportFormats } from '../utils/csvExport';
 import { Line } from 'react-chartjs-2';
 import {
@@ -25,39 +25,27 @@ ChartJS.register(
   Filler
 );
 
-export default function TransactionTable({ transactions, address }) {
+export default function TransactionTable({ transactions, tokenTransfers = [], address }) {
   const [showExportMenu, setShowExportMenu] = useState(false);
-  const [displayCount, setDisplayCount] = useState(50);
+  const [displayCount, setDisplayCount] = useState(10); // Start with 10
   const [showGraph, setShowGraph] = useState(true);
-  const tableEndRef = useRef(null);
-  const observerRef = useRef(null);
+  const [activeTab, setActiveTab] = useState('all');
 
-  // Infinite scroll setup
-  useEffect(() => {
-    const options = {
-      root: null,
-      rootMargin: '100px',
-      threshold: 0.1
-    };
+  // Combine all transactions
+  const allTransactions = [
+    ...transactions.map(tx => ({ ...tx, txType: 'native' })),
+    ...tokenTransfers.map(tx => ({ ...tx, txType: 'token' }))
+  ].sort((a, b) => b.timestamp - a.timestamp);
 
-    observerRef.current = new IntersectionObserver((entries) => {
-      if (entries[0].isIntersecting && displayCount < transactions.length) {
-        setDisplayCount(prev => Math.min(prev + 50, transactions.length));
-      }
-    }, options);
+  const getFilteredTransactions = () => {
+    if (activeTab === 'native') return transactions;
+    if (activeTab === 'tokens') return tokenTransfers;
+    return allTransactions;
+  };
 
-    if (tableEndRef.current) {
-      observerRef.current.observe(tableEndRef.current);
-    }
+  const filteredTransactions = getFilteredTransactions();
 
-    return () => {
-      if (observerRef.current) {
-        observerRef.current.disconnect();
-      }
-    };
-  }, [displayCount, transactions.length]);
-
-  if (transactions.length === 0) return null;
+  if (transactions.length === 0 && tokenTransfers.length === 0) return null;
 
   // Calculate balance changes over time
   const calculateBalanceHistory = () => {
@@ -149,12 +137,17 @@ export default function TransactionTable({ transactions, address }) {
   const handleExport = (formatId) => {
     const format = exportFormats.find(f => f.id === formatId);
     if (format) {
-      format.export(transactions, address);
+      format.export(filteredTransactions, address);
       setShowExportMenu(false);
     }
   };
 
-  const displayedTransactions = transactions.slice(0, displayCount);
+  const handleLoadMore = () => {
+    setDisplayCount(prev => Math.min(prev + 10, filteredTransactions.length));
+  };
+
+  const displayedTransactions = filteredTransactions.slice(0, displayCount);
+  const hasMore = displayCount < filteredTransactions.length;
 
   return (
     <div className="space-y-6">
@@ -179,7 +172,7 @@ export default function TransactionTable({ transactions, address }) {
         </div>
       )}
 
-      {!showGraph && (
+      {!showGraph && balanceHistory.length > 0 && (
         <button
           onClick={() => setShowGraph(true)}
           className="text-purple-400 hover:text-purple-300 transition text-sm"
@@ -197,7 +190,7 @@ export default function TransactionTable({ transactions, address }) {
               Transaction History
             </h3>
             <p className="text-sm text-gray-400 mt-1">
-              Showing {displayedTransactions.length} of {transactions.length} transaction{transactions.length !== 1 ? 's' : ''}
+              Showing {displayedTransactions.length} of {filteredTransactions.length} transaction{filteredTransactions.length !== 1 ? 's' : ''}
             </p>
           </div>
           
@@ -213,7 +206,7 @@ export default function TransactionTable({ transactions, address }) {
             
             {showExportMenu && (
               <div className="absolute right-0 mt-2 w-56 bg-gray-800 border border-gray-700 rounded-lg shadow-xl z-10">
-                {exportFormats.filter(f => f.id !== 'awakens').map(format => (
+                {exportFormats.map(format => (
                   <button
                     key={format.id}
                     onClick={() => handleExport(format.id)}
@@ -231,18 +224,51 @@ export default function TransactionTable({ transactions, address }) {
             )}
           </div>
         </div>
+
+        {/* Tabs */}
+        <div className="flex space-x-2 mb-6">
+          <button
+            onClick={() => { setActiveTab('all'); setDisplayCount(10); }}
+            className={`px-4 py-2 rounded-lg font-semibold transition ${
+              activeTab === 'all'
+                ? 'bg-purple-600 text-white'
+                : 'bg-gray-800 text-gray-400 hover:bg-gray-700'
+            }`}
+          >
+            All ({allTransactions.length})
+          </button>
+          <button
+            onClick={() => { setActiveTab('native'); setDisplayCount(10); }}
+            className={`px-4 py-2 rounded-lg font-semibold transition ${
+              activeTab === 'native'
+                ? 'bg-purple-600 text-white'
+                : 'bg-gray-800 text-gray-400 hover:bg-gray-700'
+            }`}
+          >
+            Native ({transactions.length})
+          </button>
+          <button
+            onClick={() => { setActiveTab('tokens'); setDisplayCount(10); }}
+            className={`px-4 py-2 rounded-lg font-semibold transition ${
+              activeTab === 'tokens'
+                ? 'bg-purple-600 text-white'
+                : 'bg-gray-800 text-gray-400 hover:bg-gray-700'
+            }`}
+          >
+            Tokens ({tokenTransfers.length})
+          </button>
+        </div>
         
         <div className="overflow-x-auto">
           <table className="w-full">
             <thead>
               <tr className="border-b border-gray-800 text-left">
+                <th className="py-3 px-4 text-gray-400 font-semibold">Type</th>
                 <th className="py-3 px-4 text-gray-400 font-semibold">Hash</th>
                 <th className="py-3 px-4 text-gray-400 font-semibold">From</th>
                 <th className="py-3 px-4 text-gray-400 font-semibold">To</th>
                 <th className="py-3 px-4 text-gray-400 font-semibold">Value</th>
-                <th className="py-3 px-4 text-gray-400 font-semibold">Fee</th>
                 <th className="py-3 px-4 text-gray-400 font-semibold">Time</th>
-                <th className="py-3 px-4 text-gray-400 font-semibold">Status</th>
                 <th className="py-3 px-4 text-gray-400 font-semibold">Chain</th>
                 <th className="py-3 px-4 text-gray-400 font-semibold"></th>
               </tr>
@@ -253,6 +279,15 @@ export default function TransactionTable({ transactions, address }) {
                   key={idx} 
                   className="border-b border-gray-800 hover:bg-gray-800/30 transition"
                 >
+                  <td className="py-4 px-4">
+                    <span className={`px-2 py-1 rounded text-xs font-semibold ${
+                      tx.txType === 'token' || tx.type === 'token'
+                        ? 'bg-blue-900/30 text-blue-400'
+                        : 'bg-purple-900/30 text-purple-400'
+                    }`}>
+                      {tx.txType === 'token' || tx.type === 'token' ? 'Token' : 'Native'}
+                    </span>
+                  </td>
                   <td className="py-4 px-4 font-mono text-purple-400 text-sm">
                     {tx.hashShort}
                   </td>
@@ -263,22 +298,10 @@ export default function TransactionTable({ transactions, address }) {
                     {tx.toShort}
                   </td>
                   <td className="py-4 px-4 font-semibold">
-                    {tx.value} {tx.symbol}
-                  </td>
-                  <td className="py-4 px-4 text-sm text-gray-400">
-                    {tx.fee} {tx.symbol}
+                    {tx.value} {tx.tokenSymbol || tx.symbol}
                   </td>
                   <td className="py-4 px-4 text-sm text-gray-400">
                     {new Date(tx.timestamp * 1000).toLocaleString()}
-                  </td>
-                  <td className="py-4 px-4">
-                    <span className={`px-3 py-1 rounded-full text-sm ${
-                      tx.status === 'Success' 
-                        ? 'bg-green-900/30 text-green-400' 
-                        : 'bg-red-900/30 text-red-400'
-                    }`}>
-                      {tx.status}
-                    </span>
                   </td>
                   <td className="py-4 px-4">
                     <span className="px-3 py-1 bg-purple-900/30 text-purple-400 rounded-full text-sm">
@@ -300,12 +323,24 @@ export default function TransactionTable({ transactions, address }) {
             </tbody>
           </table>
           
-          {/* Infinite scroll trigger */}
-          <div ref={tableEndRef} className="h-10 flex items-center justify-center">
-            {displayCount < transactions.length && (
-              <p className="text-gray-400 text-sm">Loading more transactions...</p>
-            )}
-          </div>
+          {/* Load More Button */}
+          {hasMore && (
+            <div className="mt-6 flex justify-center">
+              <button
+                onClick={handleLoadMore}
+                className="px-8 py-3 bg-purple-600 hover:bg-purple-700 rounded-lg font-semibold transition flex items-center space-x-2"
+              >
+                <RefreshCw size={20} />
+                <span>Load More (10)</span>
+              </button>
+            </div>
+          )}
+
+          {!hasMore && filteredTransactions.length > 10 && (
+            <div className="mt-6 text-center text-gray-400 text-sm">
+              ✓ All {filteredTransactions.length} transactions loaded
+            </div>
+          )}
         </div>
       </div>
     </div>
